@@ -1,18 +1,13 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from models import Base
-import os
-from dotenv import load_dotenv
+from config import settings
 
-# Load environment variables
-load_dotenv()
 
-# Railway PostgreSQL database configuration
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create engine with connection pool settings
 engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
+    settings.database_url,     
+    pool_pre_ping=True,
     pool_size=5,
     max_overflow=10,
     pool_timeout=30,
