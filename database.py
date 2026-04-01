@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Railway PostgreSQL database configuration
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:juumdBVQjIAbBXjIqsQQSqRgVTFTsQpj@trolley.proxy.rlwy.net:52911/railway"
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Create engine with connection pool settings
 engine = create_engine(

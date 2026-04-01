@@ -48,7 +48,8 @@ from services.notification_service import (
     notify_professor_new_course,
     notify_employer_new_course,
     notify_conference_request,
-    notify_conference_status
+    notify_conference_status,
+    create_notification
 )
 from services.message_service import (
     create_message,
@@ -82,6 +83,12 @@ Base.metadata.create_all(bind=engine)
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Utility function to clean filenames
+
+def clean_filename(filename):
+    """Remplace les espaces et caractères spéciaux par des underscores."""
+    return re.sub(r'[^A-Za-z0-9_.-]', '_', filename)
 
 def create_default_admin():
     """Creates a default admin user if it doesn't already exist."""
@@ -127,6 +134,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# At the top-level (after app = FastAPI())
+app.mount("/pdfs", StaticFiles(directory="uploads/pdfs"), name="pdfs")
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -348,7 +357,7 @@ async def read_users_me(
         },
         "courses": [
             {
-                "nom_du_cours": progress.course.title,
+                "nom_du_cours": progress.course.title if progress.course else "Cours inconnu",
                 "progres": f"{progress.progress:.1f}%",
                 "date_debut": progress.start_date.strftime("%d/%m/%Y"),
                 "date_fin": progress.completion_date.strftime("%d/%m/%Y") if progress.completion_date else "En cours...",
@@ -411,28 +420,23 @@ def upload_course(
     db.add(image_material)
     materials.append(image_material)
 
-    # 3. Uploader le PDF sur Cloudinary (resource_type auto)
-    course_pdf.file.seek(0)
-    # Clean filename
-    def clean_filename(filename):
-        # Remplace les espaces et caractères spéciaux par des underscores
-        return re.sub(r'[^A-Za-z0-9_.-]', '_', filename)
+    # 3. Save the PDF locally instead of uploading to Cloudinary
+    pdf_folder = "uploads/pdfs"
+    os.makedirs(pdf_folder, exist_ok=True)
+    pdf_filename = clean_filename(course_pdf.filename)
+    pdf_path = os.path.join(pdf_folder, pdf_filename)
 
-    pdf_filename = clean_filename(os.path.splitext(course_pdf.filename)[0])
-    pdf_upload_result = cloudinary.uploader.upload(
-        course_pdf.file.read(),
-        resource_type="auto",
-        folder=f"courses/{course.id}/pdfs",
-        public_id=pdf_filename,
-        format="pdf"
-    )
-    # Construct URL in the desired format
-    pdf_url = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/raw/upload/v{pdf_upload_result['version']}/{pdf_filename}.pdf"
+    # Chemin absolu à stocker
+    absolute_pdf_path = os.path.abspath(pdf_path)
+
+    course_pdf.file.seek(0)
+    with open(pdf_path, "wb") as buffer:
+        shutil.copyfileobj(course_pdf.file, buffer)
 
     pdf_material = CourseMaterial(
         course_id=course.id,
         file_name=course_pdf.filename,
-        file_path=pdf_url,
+        file_path=absolute_pdf_path,  # Chemin absolu
         file_type=course_pdf.content_type,
         file_category="material"
     )
@@ -498,7 +502,7 @@ def upload_course(
                 "file_name": m.file_name,
                 "file_type": m.file_type,
                 "file_category": m.file_category,
-                "file_path": m.file_path,
+                "file_path": ("/pdfs/" + m.file_name.replace(" ", "_").replace("\\", "/").replace("/", "/")) if m.file_type == "application/pdf" and m.file_path.startswith("uploads/pdfs") else m.file_path,
                 "uploaded_at": m.uploaded_at
             }
             for m in materials
@@ -570,7 +574,7 @@ def get_courses(
                     "file_name": material.file_name,
                     "file_type": material.file_type,
                     "file_category": material.file_category or "material",
-                    "file_path": material.file_path,
+                    "file_path": ("/pdfs/" + material.file_name.replace(" ", "_").replace("\\", "/").replace("/", "/")) if material.file_type == "application/pdf" and material.file_path.startswith("uploads/pdfs") else material.file_path,
                     "uploaded_at": material.uploaded_at
                 }
                 for material in course.materials
@@ -630,7 +634,7 @@ def get_courses_by_department(
                     "file_name": material.file_name,
                     "file_type": material.file_type,
                     "file_category": material.file_category or "material",
-                    "file_path": material.file_path,
+                    "file_path": ("/pdfs/" + material.file_name.replace(" ", "_").replace("\\", "/").replace("/", "/")) if material.file_type == "application/pdf" and material.file_path.startswith("uploads/pdfs") else material.file_path,
                     "uploaded_at": material.uploaded_at
                 }
                 for material in course.materials
@@ -687,7 +691,7 @@ def get_course(
                 "file_name": material.file_name,
                 "file_type": material.file_type,
                 "file_category": material.file_category or "material",
-                "file_path": material.file_path,
+                "file_path": ("/pdfs/" + material.file_name.replace(" ", "_").replace("\\", "/").replace("/", "/")) if material.file_type == "application/pdf" and material.file_path.startswith("uploads/pdfs") else material.file_path,
                 "uploaded_at": material.uploaded_at
             }
             for material in course.materials
@@ -717,7 +721,7 @@ def get_course_materials(
             "id": material.id,
             "course_id": material.course_id,
             "file_name": material.file_name,
-            "file_path": material.file_path,
+            "file_path": ("/pdfs/" + material.file_name.replace(" ", "_").replace("\\", "/").replace("/", "/")) if material.file_type == "application/pdf" and material.file_path.startswith("uploads/pdfs") else material.file_path,
             "file_type": material.file_type,
             "file_category": material.file_category or "material",
             "uploaded_at": material.uploaded_at
@@ -764,17 +768,14 @@ async def enroll_in_course(
     db.refresh(progress)
 
     # Créer une notification
-    notification = Notification(
+    create_notification(
+        db=db,
         user_id=current_user.id,
         title="Inscription à un cours",
         message=f"Vous êtes maintenant inscrit au cours {course.title}",
         type="course_enrollment",
-        related_course_id=course.id,
-        is_read=False,
-        created_at=datetime.utcnow()
+        course_id=course.id
     )
-    db.add(notification)
-    db.commit()
 
     # Préparer la réponse
     return {
@@ -824,18 +825,15 @@ async def mark_course_as_completed(
     db.commit()
     db.refresh(progress)
     
-    # Créer une notification
-    notification = Notification(
+    # Create a notification using the notification service
+    create_notification(
+        db=db,
         user_id=current_user.id,
         title="Cours terminé",
         message=f"Félicitations ! Vous avez terminé le cours {course.title}",
         type="course_completion",
-        related_course_id=course.id,
-        is_read=False,
-        created_at=datetime.utcnow()
+        course_id=course.id
     )
-    db.add(notification)
-    db.commit()
     
     return {
         "success": True,
@@ -991,7 +989,7 @@ async def admin_dashboard(
                     "file_name": material.file_name,
                     "file_type": material.file_type,
                     "file_category": material.file_category or "material",
-                    "file_path": material.file_path,
+                    "file_path": ("/pdfs/" + material.file_name.replace(" ", "_").replace("\\", "/").replace("/", "/")) if material.file_type == "application/pdf" and material.file_path.startswith("uploads/pdfs") else material.file_path,
                     "uploaded_at": material.uploaded_at
                 }
                 for material in course.materials
@@ -1056,7 +1054,7 @@ async def prof_dashboard(
                     "file_name": material.file_name,
                     "file_type": material.file_type,
                     "file_category": material.file_category or "material",
-                    "file_path": material.file_path,
+                    "file_path": ("/pdfs/" + material.file_name.replace(" ", "_").replace("\\", "/").replace("/", "/")) if material.file_type == "application/pdf" and material.file_path.startswith("uploads/pdfs") else material.file_path,
                     "uploaded_at": material.uploaded_at
                 }
                 for material in course.materials
@@ -1675,3 +1673,4 @@ def delete_conference(
     db.commit()
 
     return {"message": "Demande de formation supprimée avec succès"}
+
