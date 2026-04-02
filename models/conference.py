@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Enum
 from sqlalchemy.orm import relationship
 from datetime import datetime
-from database import Base
+from models.user import Base
 import enum
 
 class ConferenceStatus(str, enum.Enum):
