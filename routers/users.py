@@ -8,8 +8,69 @@ from schemas import (UserApproval, PendingUser, UserProfileUpdate,
                      UserPreferences, UserPreferencesUpdate, PasswordUpdate)
 from auth import verify_password, get_password_hash
 from datetime import datetime
+from models.course import Course, CourseProgress
+from sqlalchemy import func
 
 router = APIRouter(tags=["Users"])
+
+# ─── Users/Me ─────────────────────────────────────────────────
+@router.get("/users/me")
+def get_my_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Profile + course statistics for the logged-in user."""
+    progress_records = db.query(CourseProgress).filter(
+        CourseProgress.user_id == current_user.id
+    ).all()
+
+    total = len(progress_records)
+    completed = len([p for p in progress_records if p.is_completed])
+    avg_progress = (
+        sum(p.progress for p in progress_records) / total
+        if total > 0 else 0
+    )
+
+    # Average completion time in days
+    completion_times = [
+        (p.completion_date - p.start_date).days
+        for p in progress_records
+        if p.is_completed and p.completion_date
+    ]
+    avg_completion_days = (
+        sum(completion_times) / len(completion_times)
+        if completion_times else 0
+    )
+
+    courses_detail = []
+    for p in progress_records:
+        course = db.query(Course).filter(Course.id == p.course_id).first()
+        if course:
+            courses_detail.append({
+                "nom_du_cours": course.title,
+                "progres": f"{p.progress}%",
+                "statut": p.status,
+                "date_debut": p.start_date,
+                "date_completion": p.completion_date,
+            })
+
+    return {
+        "profile": {
+            "nom": current_user.nom,
+            "prenom": current_user.prenom,
+            "email": current_user.email,
+            "departement": current_user.departement,
+            "fonction": current_user.role,
+        },
+        "statistics": {
+            "total_cours_suivis": total,
+            "cours_termines": completed,
+            "progression_moyenne": f"{avg_progress:.1f}%",
+            "temps_moyen_completion": f"{avg_completion_days:.1f} jours",
+        },
+        "courses": courses_detail
+    }
+
 
 @router.get("/admin/pending-users", response_model=List[PendingUser])
 def get_pending_users(
@@ -121,3 +182,42 @@ def update_password(
     current_user.hashed_password = get_password_hash(password_update.new_password)
     db.commit()
     return {"message": "Password updated successfully"}
+
+
+# ─── Dashboard ────────────────────────────────────────────────
+@router.get("/dashboard/admin")
+def dashboard_admin(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    courses = db.query(Course).filter(
+        Course.instructor_id == current_user.id
+    ).all()
+    return {"courses": courses}
+
+
+@router.get("/dashboard/prof")
+def dashboard_prof(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "prof":
+        raise HTTPException(status_code=403, detail="Professor access required")
+    courses = db.query(Course).filter(
+        Course.instructor_id == current_user.id
+    ).all()
+    return {"courses": courses}
+
+
+@router.get("/dashboard/employer")
+def dashboard_employer(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role != "employer":
+        raise HTTPException(status_code=403, detail="Employer access required")
+    # ← bug fixed: added department filter
+    courses = db.query(Course).filter(
+        Course.departement == current_user.departement
+    ).all()
+    return {"courses": courses}
