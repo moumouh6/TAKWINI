@@ -13,11 +13,6 @@ class Settings(BaseSettings):
     default_admin_email: str = "admin@gig.dz"
     default_admin_password: str = "admin123"
 
-    # Cloudinary (temporary — removed in Step 5)
-    cloudinary_cloud_name: str = ""
-    cloudinary_api_key: str = ""
-    cloudinary_api_secret: str = ""
-
     # Local uploads
     upload_dir: str = "uploads"
 
