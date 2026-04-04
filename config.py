@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Database
     database_url: str
-    
+
     # JWT
     secret_key: str
     algorithm: str = "HS256"
@@ -18,6 +18,9 @@ class Settings(BaseSettings):
 
     # Redis
     redis_url: str = ""
+
+    # CORS - comma-separated list of allowed origins
+    cors_origins: str = "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000"
 
     class Config:
         env_file = ".env"
