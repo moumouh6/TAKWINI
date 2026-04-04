@@ -169,9 +169,9 @@ Backend-main/
 │   └── conferences.py           # Conference requests + calendar + cache
 │
 ├── services/
-│   ├── notification_service.py  # All notification logic + cache invalidation
-│   ├── message_service.py       # Message CRUD
-│   └── course_service.py        # (exists, mostly unused)
+│   ├── notification_service.py  # Notification creation + cache invalidation on notify
+│   ├── message_service.py       # Message CRUD helpers
+│   └── course_service.py        # (placeholder, mostly unused)
 │
 ├── uploads/                     # Local file storage — gitignored
 │   ├── courses/{id}/images/
@@ -179,9 +179,10 @@ Backend-main/
 │   ├── courses/{id}/videos/
 │   └── messages/{id}/
 │
-├── .env                     # Secrets — never commit to git
-├── requirements.txt
-└── venv/
+├── .env                         # Secret config — NEVER commit
+├── .env.example                 # Safe template — commit this
+├── .gitignore
+└── requirements.txt
 ```
 
 ---
@@ -467,91 +468,117 @@ Notifications showed the biggest gain because the endpoint runs two queries (ful
 
 ### Monitoring
 
-```
-GET  /admin/cache-stats   → Returns Redis memory, hit/miss ratio, connected clients
-DELETE /admin/cache-clear → Wipes entire cache (use when data feels stale after DB changes)
-```
-
-### `cache.py` Public API
-
-```python
-cache_get(key)                        # Returns cached value or None
-cache_set(key, value, ttl)            # Stores value with TTL in seconds
-cache_delete(key)                     # Deletes single key
-cache_delete_pattern(prefix)          # Deletes all keys starting with prefix
-cache_stats()                         # Returns Redis info dict
-```
-
-### TTL Constants
-
-```python
-TTL_COURSES_LIST  = 120   # 2 min
-TTL_COURSE_DETAIL = 180   # 3 min
-TTL_NOTIFICATIONS = 30    # 30 sec
-TTL_CALENDAR      = 300   # 5 min
-```
-
----
-
-## Environment Setup
-
-### `.env` file
-
-```env
-DATABASE_URL=postgresql://postgres:password@localhost:5432/takwini
-SECRET_KEY=your-secret-key-here
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-DEFAULT_ADMIN_EMAIL=admin@gig.dz
-DEFAULT_ADMIN_PASSWORD=admin123
-UPLOAD_DIR=uploads
-REDIS_URL=rediss://default:password@your-endpoint.upstash.io:6379
-```
-
-### `config.py` Settings
-
-```python
-class Settings(BaseSettings):
-    database_url: str
-    secret_key: str
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    default_admin_email: str = "admin@gig.dz"
-    default_admin_password: str = "admin123"
-    upload_dir: str = "uploads"
-    redis_url: str = ""
-```
-
----
-
-## Running Locally
-
 ```bash
-# 1. Clone the repo and enter the folder
-cd Backend-main
-
-# 2. Create and activate virtual environment
-python -m venv venv
-venv\Scripts\activate        # Windows
-source venv/bin/activate     # Mac/Linux
-
-# 3. Install dependencies
-pip install -r requirements.txt
-
-# 4. Create .env file with your values (see Environment Setup above)
-
-# 5. Create PostgreSQL database named: takwini
-
-# 6. Run the server
-uvicorn main:app --reload
-
-# 7. Open API docs
-http://localhost:8000/docs
+GET  /admin/cache-stats    # memory, hit/miss, connected clients
+DELETE /admin/cache-clear  # wipe all keys — use after direct DB patches
 ```
+
+Sample response:
+```json
+{
+  "status": "connected",
+  "used_memory_human": "1.45M",
+  "connected_clients": 1,
+  "total_commands_processed": 842,
+  "keyspace_hits": 631,
+  "keyspace_misses": 94
+}
+```
+
+Target hit rate in production: **> 70%**  
+Formula: `keyspace_hits / (keyspace_hits + keyspace_misses)`
 
 ---
 
-## Dependencies
+## File Storage
+
+All uploads are stored on the local filesystem. Cloudinary was removed.
+
+### Directory Layout
+
+```
+uploads/
+├── courses/
+│   └── {course_id}/
+│       ├── images/      ← thumbnail (required on create)
+│       ├── pdfs/        ← course material (required on create)
+│       └── videos/      ← course video (optional)
+└── messages/
+    └── {message_id}/
+        └── {timestamp}_{filename}
+```
+
+### Filename Sanitization
+
+```python
+re.sub(r'[^A-Za-z0-9_.-]', '_', filename)
+```
+
+Strips all non-safe characters before saving. Prevents path traversal and encoding issues.
+
+### Serving
+
+Files are served via FastAPI `StaticFiles` mounted at `/uploads`. No per-request auth on the URL itself — security relies on the frontend not exposing raw paths to unauthorized users.
+
+> For public-facing deployments: serve through a CDN or add an authenticated proxy endpoint.
+
+### Cleanup
+
+Course deletion calls `shutil.rmtree(f"uploads/courses/{course_id}")` atomically with the DB delete. No orphaned files.
+
+---
+
+## Notification System
+
+### Two Creation Paths
+
+```python
+# Single user — 1 DB commit
+create_notification(db, user_id, title, message, type, course_id)
+
+# Multiple users — 1 DB commit via bulk_save_objects
+_bulk_notify(db, user_ids, title, message, type, course_id)
+```
+
+`bulk_save_objects` matters at scale. Creating a course that notifies 200 employees = 1 DB commit, not 200.
+
+Both paths call `cache_delete(f"notifications:user:{user_id}")` after committing, ensuring the next fetch always reflects current state.
+
+### Notification Types
+
+| Type | Recipient | Trigger |
+|---|---|---|
+| `account_request` | Admin | New user registers |
+| `account_approval` | User | Admin approves / rejects account |
+| `new_course` | Admin | Any course created |
+| `department_new_course` | All profs in dept | Course created in their dept |
+| `new_course_available` | All employers in dept | Course created in their dept |
+| `course_deleted` | Admin | Course deleted |
+| `material_added` | Admin + enrolled users | Material added to a course |
+| `progress_updated` | User | Own progress updated |
+| `conference_request` | Admin | Prof submits a conference request |
+| `conference_status` | Prof | Admin approves / denies their request |
+
+---
+
+## Dependency Decisions
+
+Every version is pinned deliberately. Do not upgrade without reading the reason.
+
+| Package | Version | Reason |
+|---|---|---|
+| `fastapi` | 0.115.5 | Minimum version compatible with Pydantic 2.12.x. Earlier versions crash with `AttributeError: 'FieldInfo' object has no attribute 'in_'` on Python 3.13. |
+| `starlette` | 0.41.3 | Exact peer dependency of fastapi 0.115.5. Do not change independently. |
+| `uvicorn` | 0.32.0 | Compatible with starlette 0.41.x. |
+| `sqlalchemy` | 2.0.36 | Minimum for Python 3.13. Version 2.0.23 fails with `AssertionError` on `__firstlineno__` / `__static_attributes__`. |
+| `pydantic` | 2.12.5 | Latest stable. All schemas use `model_config = ConfigDict(from_attributes=True)`. |
+| `pydantic-settings` | 2.13.1 | Matched to pydantic 2.12.x. |
+| `bcrypt` | 4.0.1 | bcrypt 5.x enforces a 72-byte password limit that raises `ValueError` inside `passlib.verify()`. |
+| `passlib[bcrypt]` | 1.7.4 | Last stable release, no longer maintained. Acceptable for internal use. |
+| `python-jose[cryptography]` | 3.3.0 | JWT with cryptography backend. |
+| `redis` | 5.0.1 | Stable client for Redis 7.x and Upstash. |
+| `email-validator` | 2.3.0 | Required by `pydantic[email]` for `EmailStr` fields. |
+| `psycopg2-binary` | 2.9.11 | PostgreSQL adapter. Binary avoids compilation. |
 
 ```txt
 fastapi==0.115.5
