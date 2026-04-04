@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, constr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -22,8 +22,7 @@ class User(UserBase):
     is_active: bool
     is_approved: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserApproval(BaseModel):
     is_approved: bool
@@ -66,8 +65,7 @@ class CourseMaterial(CourseMaterialBase):
     file_path: str
     uploaded_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class Course(CourseBase):
     id: int
@@ -75,11 +73,10 @@ class Course(CourseBase):
     created_at: datetime
     updated_at: datetime
     materials: List[CourseMaterial] = []
-    instructor: dict  # Pour les informations du professeur
-    image_url: Optional[str] = None  # URL de l'image du cours
+    instructor: Optional[User] = None
+    image_url: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class NotificationBase(BaseModel):
     title: str
@@ -97,15 +94,13 @@ class Notification(NotificationBase):
     related_course_id: Optional[int] = None
     related_material_id: Optional[int] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class NotificationResponse(BaseModel):
     notifications: List[Notification]
     unread_count: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MessageBase(BaseModel):
     content: str
@@ -122,8 +117,7 @@ class Message(MessageBase):
     is_read: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserMessage(BaseModel):
     id: int
@@ -133,16 +127,13 @@ class UserMessage(BaseModel):
     departement: str
     role: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class MessageInDB(Message):
     sender: UserMessage
     receiver: UserMessage
 
-    class Config:
-        from_attributes = True
-
+    model_config = ConfigDict(from_attributes=True)
 
 class ConferenceStatus(str, Enum):
     pending = "En attente"
@@ -172,8 +163,7 @@ class ConferenceRequestOut(BaseModel):
     created_at: datetime
     requested_by: User
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserSettings(BaseModel):
     language: str  # "fr" or "en"
@@ -204,14 +194,12 @@ class UserSettingsResponse(BaseModel):
     language: str
     theme: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserPersonalInfo(BaseModel):
     telephone: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserPersonalInfoUpdate(BaseModel):
     telephone: Optional[str] = None
@@ -220,8 +208,7 @@ class UserPreferences(BaseModel):
     language: str
     theme: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserPreferencesUpdate(BaseModel):
     language: Optional[str] = None
