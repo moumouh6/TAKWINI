@@ -352,38 +352,6 @@ TTL_NOTIFICATIONS = 30    # 30 sec
 TTL_CALENDAR      = 300   # 5 min
 ```
 
----
-
-## Environment Setup
-
-### `.env` file
-
-```env
-DATABASE_URL=postgresql://postgres:password@localhost:5432/takwini
-SECRET_KEY=your-secret-key-here
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-DEFAULT_ADMIN_EMAIL=admin@gig.dz
-DEFAULT_ADMIN_PASSWORD=admin123
-UPLOAD_DIR=uploads
-REDIS_URL=rediss://default:password@your-endpoint.upstash.io:6379
-```
-
-### `config.py` Settings
-
-```python
-class Settings(BaseSettings):
-    database_url: str
-    secret_key: str
-    algorithm: str = "HS256"
-    access_token_expire_minutes: int = 30
-    default_admin_email: str = "admin@gig.dz"
-    default_admin_password: str = "admin123"
-    upload_dir: str = "uploads"
-    redis_url: str = ""
-```
-
----
 
 ## Running Locally
 
