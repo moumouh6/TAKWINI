@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Local uploads
     upload_dir: str = "uploads"
 
+    # Redis
+    redis_url: str = ""
+
     class Config:
         env_file = ".env"
 
