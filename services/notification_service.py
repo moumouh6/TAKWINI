@@ -4,7 +4,7 @@ from models.user import User
 from models.course import Course
 from typing import Dict
 from datetime import datetime
-
+from cache import cache_delete
 
 # ─── Core Functions ───────────────────────────────────────────
 
@@ -29,6 +29,7 @@ def create_notification(
     db.add(notification)
     db.commit()
     db.refresh(notification)
+    cache_delete(f"notifications:user:{user_id}")
     return notification
 
 
@@ -60,6 +61,9 @@ def _bulk_notify(
     ]
     db.bulk_save_objects(notifications)
     db.commit()
+
+    for uid in user_ids:
+        cache_delete(f"notifications:user:{uid}")
 
 
 # ─── Read Functions ───────────────────────────────────────────
