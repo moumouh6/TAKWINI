@@ -1,6 +1,7 @@
 # main.py
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+import time
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from database import engine
@@ -47,6 +48,14 @@ app = FastAPI(
         "email": "admin@gig.dz"
     }
 )
+
+@app.middleware("http")
+async def add_response_time_header(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    duration = (time.time() - start) * 1000  # convert to ms
+    response.headers["X-Response-Time"] = f"{duration:.2f}ms"
+    return response
 
 app.add_middleware(
     CORSMiddleware,
