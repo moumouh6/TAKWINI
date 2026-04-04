@@ -11,6 +11,10 @@ from services.notification_service import (
     notify_new_course, notify_professor_new_course,
     notify_employer_new_course, notify_course_deleted, notify_material_added
 )
+from cache import (
+    cache_get, cache_set, cache_delete,
+    cache_delete_pattern, TTL_COURSES_LIST, TTL_COURSE_DETAIL
+)
 
 router = APIRouter(tags=["Courses"])
 
@@ -33,10 +37,25 @@ def get_courses(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # build cache key based on role + dept + pagination
+    if current_user.role == "employer":
+        cache_key = f"courses:list:dept:{current_user.departement}:skip:{skip}:limit:{limit}"
+    else:
+        cache_key = f"courses:list:all:skip:{skip}:limit:{limit}"
+
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     query = db.query(Course).options(joinedload(Course.materials))
     if current_user.role == "employer":
         query = query.filter(Course.departement == current_user.departement)
-    return query.offset(skip).limit(min(limit, 100)).all()
+    courses = query.offset(skip).limit(min(limit, 100)).all()
+
+    from schemas import Course as CourseSchema
+    result = [CourseSchema.model_validate(c, from_attributes=True).model_dump(mode="json") for c in courses]
+    cache_set(cache_key, result, TTL_COURSES_LIST)
+    return courses
 
 # ─── Get Courses By Department ────────────────────────────────
 @router.get("/courses/by-department")
@@ -55,12 +74,22 @@ def get_course(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    cache_key = f"courses:detail:{course_id}"
+
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     course = db.query(Course).options(
         joinedload(Course.materials),
         joinedload(Course.instructor)
     ).filter(Course.id == course_id).first()
     if not course:
         raise HTTPException(status_code=404, detail="Course not found")
+
+    from schemas import Course as CourseSchema
+    result = CourseSchema.model_validate(course, from_attributes=True).model_dump(mode="json")
+    cache_set(cache_key, result, TTL_COURSE_DETAIL)
     return course
 
 # ─── Get Course Materials ─────────────────────────────────────
@@ -149,6 +178,7 @@ def create_course(
     notify_professor_new_course(db, course)
     notify_employer_new_course(db, course)
 
+    cache_delete_pattern("courses:list:")
     return course
 
 # ─── Update Course ────────────────────────────────────────────
@@ -172,8 +202,12 @@ def update_course(
     if external_links: course.external_links = external_links
     if quiz_link: course.quiz_link = quiz_link
     course.updated_at = datetime.utcnow()
+
     db.commit()
     db.refresh(course)
+
+    cache_delete(f"courses:detail:{course_id}")
+    cache_delete_pattern("courses:list:")
     return course
 
 # ─── Delete Course ────────────────────────────────────────────
@@ -197,6 +231,10 @@ def delete_course(
     notify_course_deleted(db, course)
     db.delete(course)
     db.commit()
+
+    cache_delete(f"courses:detail:{course_id}")
+    cache_delete_pattern("courses:list:")
+
     return {"message": "Course deleted successfully"}
 
 # ─── Delete Material ──────────────────────────────────────────
