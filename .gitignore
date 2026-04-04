@@ -52,3 +52,6 @@ Thumbs.db
 test_security.py
 TESTING_GUIDE.md
 TOKEN_REFRESH_GUIDE.md
+test_token_refresh.py
+TOKEN_REFRESH_USAGE.md
+migrate_db.py

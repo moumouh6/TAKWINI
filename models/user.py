@@ -19,7 +19,11 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     language = Column(String, default="fr")  # Default language is French
     theme = Column(String, default="light")  # Default theme is light
-    
+
+    # Refresh token for "Remember Me" functionality
+    refresh_token = Column(String, unique=True, nullable=True, index=True)
+    refresh_token_expires = Column(DateTime, nullable=True)
+
     # Relationship with Course
     courses = relationship("Course", back_populates="instructor")
     course_progress = relationship("CourseProgress", back_populates="user")

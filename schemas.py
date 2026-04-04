@@ -34,8 +34,20 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+class TokenWithRefresh(Token):
+    """Token response with refresh token info (used internally)."""
+    expires_in: int  # seconds until access token expires
+    refresh_token: Optional[str] = None  # Only included in specific cases
+
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+class LogoutResponse(BaseModel):
+    message: str
+
+class RefreshResponse(Token):
+    """Response from refresh endpoint - returns new access token."""
+    expires_in: int
 
 # Course schemas
 class CourseBase(BaseModel):
