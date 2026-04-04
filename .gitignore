@@ -48,3 +48,7 @@ Thumbs.db
 
 # Logs
 *.log 
+
+test_security.py
+TESTING_GUIDE.md
+TOKEN_REFRESH_GUIDE.md
