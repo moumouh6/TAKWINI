@@ -10,6 +10,7 @@ from auth import verify_password, get_password_hash
 from datetime import datetime
 from models.course import Course, CourseProgress
 from sqlalchemy import func
+from cache import cache_stats, _client
 
 router = APIRouter(tags=["Users"])
 
@@ -71,6 +72,24 @@ def get_my_profile(
         "courses": courses_detail
     }
 
+
+# ─── Cache Management (admin only) ───────────────────────────
+@router.get("/admin/cache-stats")
+def get_cache_stats(
+    current_user: User = Depends(require_admin)
+):
+    """See Redis memory usage and hit/miss ratio."""
+    return cache_stats()
+
+
+@router.delete("/admin/cache-clear")
+def clear_cache(
+    current_user: User = Depends(require_admin)
+):
+    """Nuclear option — wipe entire cache. Use when data feels stale."""
+    if _client:
+        _client.flushdb()
+    return {"message": "Cache cleared successfully"}
 
 @router.get("/admin/pending-users", response_model=List[PendingUser])
 def get_pending_users(
