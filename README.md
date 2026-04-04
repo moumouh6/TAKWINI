@@ -1,662 +1,353 @@
-# TAKWINI Backend
+# TAKWINI Platform - Development Roadmap
 
-> Corporate Learning Management System for Gulf Insurance Group (GIG) Algeria  
-> FastAPI · PostgreSQL · Redis · Python 3.13
-
----
-
-## Table of Contents
-
-- [Architecture Overview](#architecture-overview)
-- [Quick Start](#quick-start)
-- [Environment Variables](#environment-variables)
-- [Project Structure](#project-structure)
-- [User Roles & Access Control](#user-roles--access-control)
-- [Database Schema](#database-schema)
-- [API Reference](#api-reference)
-- [Authentication](#authentication)
-- [Caching Strategy](#caching-strategy)
-- [File Storage](#file-storage)
-- [Notification System](#notification-system)
-- [Dependency Decisions](#dependency-decisions)
-- [Deployment](#deployment)
-- [Known Issues & Roadmap](#known-issues--roadmap)
+> Corporate Learning Management System for Gulf Insurance Group (GIG) Algeria
 
 ---
 
-## Architecture Overview
+## Executive Summary
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                        Client                           │
-│              (React Frontend / Mobile App)              │
-└────────────────────────┬────────────────────────────────┘
-                         │ HTTPS
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                    FastAPI (Uvicorn)                     │
-│                                                         │
-│   ┌──────────┐  ┌──────────┐  ┌──────────────────────┐ │
-│   │  /auth   │  │ /courses │  │   /notifications     │ │
-│   │ /users   │  │ /enroll  │  │   /messages          │ │
-│   └──────────┘  └──────────┘  │   /conferences       │ │
-│                                └──────────────────────┘ │
-│                                                         │
-│   ┌──────────────────────┐  ┌───────────────────────┐  │
-│   │      cache.py        │  │  notification_service │  │
-│   │    (Redis layer)     │  │  message_service      │  │
-│   └──────────┬───────────┘  └───────────────────────┘  │
-└──────────────┼──────────────────────────────────────────┘
-               │
-       ┌───────┴────────┐
-       │                │
-       ▼                ▼
-┌─────────────┐  ┌──────────────────┐
-│  PostgreSQL │  │  Redis (Upstash) │
-│  (primary)  │  │  (cache layer)   │
-└─────────────┘  └──────────────────┘
-```
-
-**Request flow for a cached endpoint:**
-1. Request hits FastAPI router
-2. Router checks Redis → **cache hit: return in ~2ms**
-3. Cache miss → query PostgreSQL → serialize → store in Redis → return
-4. On write (create/update/delete) → invalidate relevant cache keys immediately
+This roadmap outlines the phased development of TAKWINI from **MVP** (production-ready for internal use) through **v1.2** (enterprise-ready with advanced features). All phases are designed to work within **free tier infrastructure** where possible.
 
 ---
 
-## Quick Start
+## Infrastructure Overview (Free Tier Options)
 
-### Prerequisites
-
-- Python 3.13+
-- PostgreSQL 14+
-- An [Upstash](https://upstash.com) Redis database (free tier is sufficient)
-
-### Setup
-
-```bash
-# Clone and enter project
-git clone <repo-url>
-cd Backend-main
-
-# Create virtual environment
-python -m venv venv
-
-# Activate
-venv\Scripts\activate      # Windows
-source venv/bin/activate   # macOS / Linux
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# → Edit .env with your values (see Environment Variables)
-
-# Create PostgreSQL database
-createdb takwini
-
-# Run
-uvicorn main:app --reload
-
-# API docs
-http://localhost:8000/docs
-```
+| Component | Free Tier Provider | Limits |
+|-----------|-------------------|--------|
+| **Hosting** | Render / Railway / Fly.io | 1-2 instances, sleeps on inactivity |
+| **Database** | Supabase / Neon / Render PostgreSQL | 500MB - 1GB storage |
+| **Redis** | Upstash / Redis Cloud | 10,000 requests/day |
+| **File Storage** | Local disk (upgrades to Cloudflare R2 free tier) | 1-10GB |
+| **CDN** | Cloudflare Free | Unlimited, global |
+| **Monitoring** | Sentry Free / LogRocket | 5,000 events/month |
 
 ---
 
-## Environment Variables
+## Phase 0: Current Status (Completed)
 
-Create a `.env` file in the project root. **Never commit this file.**
-
-```env
-# ── Database ──────────────────────────────────────────────────
-DATABASE_URL=postgresql://postgres:yourpassword@localhost:5432/takwini
-
-# ── JWT Auth ──────────────────────────────────────────────────
-SECRET_KEY=change-this-to-a-long-random-string-in-production
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# ── Default Admin Account (created on first run) ──────────────
-DEFAULT_ADMIN_EMAIL=admin@gig.dz
-DEFAULT_ADMIN_PASSWORD=change-this-in-production
-
-# ── File Storage ──────────────────────────────────────────────
-UPLOAD_DIR=uploads
-
-# ── Redis Cache (Upstash) ─────────────────────────────────────
-REDIS_URL=rediss://default:yourpassword@your-endpoint.upstash.io:6379
-```
-
-> **Generate a secure SECRET_KEY:**
-> ```bash
-> python -c "import secrets; print(secrets.token_hex(32))"
-> ```
+**What's Working:**
+- User registration/login with JWT
+- Course CRUD with file uploads
+- Enrollment and progress tracking
+- Notifications system
+- Messaging between users
+- Conference scheduling
+- Redis caching layer
+- Role-based access control (admin/prof/employer)
 
 ---
 
-## Project Structure
+## Phase 1: MVP (Minimum Viable Product)
+**Goal:** Production-ready for internal corporate use (100-500 users)
+**Timeline:** 2-3 weeks
+**Cost:** $0 (Free tier only)
 
+### Requirements
+
+#### Security & Hardening
+| Feature | Priority | Implementation |
+|---------|----------|----------------|
+| ✅ Rate limiting | Done | `slowapi` - 5/min login, 3/min register |
+| ✅ CORS restrictions | Done | Environment-based origin allowlist |
+| ✅ Secure secrets | Done | `render.yaml` using `sync: false` |
+| ⏳ Token refresh mechanism | High | Refresh tokens with httpOnly cookies |
+| ⏳ Password strength validation | Medium | Min 8 chars, complexity rules |
+| ⏳ Request logging | Medium | Structured JSON logs |
+
+#### API Improvements
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| ⏳ Health check endpoint | High | `/health` - DB, Redis, disk checks |
+| ⏳ API versioning | Medium | `/api/v1/` prefix |
+| ⏳ Request ID middleware | Low | For tracing requests |
+
+#### Data Integrity
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| ⏳ Soft delete for users/courses | High | `deleted_at` column instead of hard delete |
+| ⏳ Database migrations | High | Alembic setup |
+| ⏳ Backup strategy | High | Daily automated backups |
+
+### MVP Infrastructure (Free Tier)
+```yaml
+# Render Web Service: 1 instance (512MB RAM)
+# PostgreSQL: Render Managed or Supabase Free (500MB)
+# Redis: Upstash Free (10k req/day)
+# Files: Persistent disk on Render (1GB)
 ```
-Backend-main/
-│
-├── main.py                      # App factory, router registration, static files
-├── auth.py                      # JWT encode/decode, bcrypt hash/verify
-├── database.py                  # SQLAlchemy engine, session factory
-├── config.py                    # Pydantic settings, reads from .env
-├── dependencies.py              # FastAPI dependencies: get_db, get_current_user,
-│                                #   require_admin, require_prof_or_admin, require_approved
-├── schemas.py                   # All Pydantic v2 request/response models
-├── cache.py                     # Redis cache layer — all caching logic lives here
-│
-├── models/
-│   ├── base.py
-│   ├── user.py
-│   ├── course.py                # Course, CourseMaterial, CourseProgress
-│   ├── notification.py
-│   ├── message.py
-│   └── conference.py            # ConferenceRequest, ConferenceStatus enum
-│
-├── routers/
-│   ├── auth.py                  # POST /register  POST /token
-│   ├── users.py                 # User management, preferences, cache admin endpoints
-│   ├── courses.py               # Course CRUD + file upload + cache
-│   ├── enrollment.py            # Enroll, progress tracking
-│   ├── notifications.py         # Fetch + mark as read + cache
-│   ├── messages.py              # Internal messaging
-│   └── conferences.py           # Conference requests + calendar + cache
-│
-├── services/
-│   ├── notification_service.py  # Notification creation + cache invalidation on notify
-│   ├── message_service.py       # Message CRUD helpers
-│   └── course_service.py        # (placeholder, mostly unused)
-│
-├── uploads/                     # Local file storage — gitignored
-│   ├── courses/{id}/images/
-│   ├── courses/{id}/pdfs/
-│   ├── courses/{id}/videos/
-│   └── messages/{id}/
-│
-├── .env                         # Secret config — NEVER commit
-├── .env.example                 # Safe template — commit this
-├── .gitignore
-└── requirements.txt
+
+### MVP Launch Checklist
+- [ ] All security features implemented
+- [ ] Health check endpoint returning 200
+- [ ] Database backups configured
+- [ ] Error monitoring (Sentry) integrated
+- [ ] README updated with deployment instructions
+- [ ] Admin documentation created
+
+---
+
+## Phase 2: v1.0 (Production Release)
+**Goal:** Stable platform for 500-2,000 users
+**Timeline:** 4-6 weeks
+**Cost:** $0-10/month (mostly free tier)
+
+### New Features
+
+#### User Experience
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Search functionality | High | Full-text search for courses |
+| 🔲 Course categories/tags | High | Better organization |
+| 🔲 User dashboard stats | High | Enrolled courses, completion rate |
+| 🔲 Email notifications | Medium | SMTP integration for important events |
+| 🔲 Bulk user import | Medium | CSV import for HR |
+
+#### API & Backend
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Background tasks | High | Celery + Redis for async operations |
+| 🔲 File storage migration | High | Move to Cloudflare R2 (free tier) |
+| 🔲 API rate limiting per user | Medium | Different limits per role |
+| 🔲 Webhook support | Low | For integrations |
+
+#### Security & Compliance
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Audit logging | High | Log all admin actions |
+| 🔲 Session management | Medium | View/kill active sessions |
+| 🔲 Data export (GDPR) | Medium | Export user data on request |
+
+### v1.0 Infrastructure (Free + Minimal Cost)
+```yaml
+# Web: Render (1 instance) or Fly.io (3 small instances free)
+# Database: Supabase Free (500MB) or Neon Free (3GB read-only limit)
+# Redis: Upstash Free (10k req/day)
+# File Storage: Cloudflare R2 (10GB free, no egress fees)
+# CDN: Cloudflare Free
+# Monitoring: Sentry Free (5k events/month)
+# Estimated Cost: $0-10/month
+```
+
+### v1.0 Performance Targets
+- Response time: P95 < 200ms (cached), P95 < 500ms (uncached)
+- Availability: 99.5%
+- Concurrent users: 100+
+
+---
+
+## Phase 3: v1.1 (Scale & Polish)
+**Goal:** Support 2,000-5,000 users
+**Timeline:** 6-8 weeks
+**Cost:** $20-50/month
+
+### New Features
+
+#### Learning Enhancements
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Quizzes/Assessments | High | Multiple choice, scoring |
+| 🔲 Certificates generation | High | PDF certificates on completion |
+| 🔲 Course prerequisites | Medium | Chain courses |
+| 🔲 Learning paths | Medium | Curated course sequences |
+| 🔲 SCORM support | Low | Import external content |
+
+#### Real-time Features
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Real-time notifications | High | WebSocket/SSE instead of polling |
+| 🔲 Live chat | Medium | During conferences |
+| 🔲 Activity feed | Medium | See what colleagues are learning |
+
+#### Analytics & Reporting
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Admin analytics dashboard | High | Enrollment stats, completion rates |
+| 🔲 Department reports | High | Exportable reports for managers |
+| 🔲 Course effectiveness | Medium | Ratings, feedback, completion |
+| 🔲 User activity tracking | Medium | Time spent, engagement |
+
+### v1.1 Infrastructure ($20-50/month)
+```yaml
+# Web: 2-3 instances on Render ($7-21/month)
+# Database: Supabase Pro or Neon (up to 8GB, $15-25/month)
+# Redis: Upstash Pay-as-you-go ($5-10/month)
+# File Storage: Cloudflare R2 (free tier covers)
+# CDN: Cloudflare Pro ($20/month) - optional
+# Monitoring: Sentry Team ($9/month) - optional
+# Total: ~$20-50/month
 ```
 
 ---
 
-## User Roles & Access Control
-
-Three roles, enforced via FastAPI dependency injection on every protected route.
-
-| Role | Code Value | Description |
-|---|---|---|
-| Administrator | `"admin"` | Full access. Approves users, manages all content, approves conferences. |
-| Instructor | `"prof"` | Creates and manages courses. Requests conferences. |
-| Employee | `"employer"` | Enrolls in courses, tracks own progress, sends messages. Scoped to their department. |
-
-### Role Guards
-
-```python
-require_admin            # role == "admin" only
-require_prof_or_admin    # role in ("prof", "admin")
-require_approved         # is_approved == True, any role
-get_current_user         # any valid JWT
-```
-
-> `employer` users only see courses and conferences from their own `departement`. This filter is applied at the query level — not in the response.
-
----
-
-## Database Schema
-
-### Users
-
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER PK | |
-| nom / prenom | VARCHAR | Last / first name |
-| departement | VARCHAR | |
-| role | VARCHAR | `admin` / `prof` / `employer` |
-| email | VARCHAR UNIQUE | |
-| telephone | VARCHAR | |
-| hashed_password | VARCHAR | bcrypt |
-| is_active | BOOLEAN | DEFAULT TRUE |
-| is_approved | BOOLEAN | DEFAULT FALSE — admin must flip |
-| language | VARCHAR | `fr` / `en` |
-| theme | VARCHAR | `light` / `dark` |
-| created_at | TIMESTAMP | |
-
-### Courses
-
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER PK | |
-| title / description | VARCHAR / TEXT | |
-| instructor_id | FK → users.id | |
-| departement | VARCHAR | Scopes employer visibility |
-| external_links / quiz_link | TEXT | Optional |
-| created_at / updated_at | TIMESTAMP | |
-
-### CourseMaterials
-
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER PK | |
-| course_id | FK → courses.id | |
-| file_name / file_path | VARCHAR | Sanitized name, local path |
-| file_type | VARCHAR | MIME type |
-| file_category | VARCHAR | `photo` / `material` / `record` |
-| uploaded_at | TIMESTAMP | |
-
-### CourseProgress
-
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER PK | |
-| user_id / course_id | FK | |
-| progress | FLOAT | 0.0 – 100.0 |
-| status | VARCHAR | `En cours` / `Terminé` |
-| start_date | TIMESTAMP | Set on enroll |
-| completion_date | TIMESTAMP | Set when complete |
-| is_completed | BOOLEAN | |
-
-### Notifications
-
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER PK | |
-| user_id | FK → users.id | |
-| title / message | VARCHAR / TEXT | |
-| type | VARCHAR | See Notification Types |
-| is_read | BOOLEAN | DEFAULT FALSE |
-| related_course_id | FK nullable | |
-| created_at | TIMESTAMP | |
-
-### Messages
-
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER PK | |
-| sender_id / receiver_id | FK → users.id | |
-| content | TEXT | |
-| file_path / file_type | VARCHAR | Nullable attachment |
-| is_read | BOOLEAN | DEFAULT FALSE |
-| created_at | TIMESTAMP | |
-
-### ConferenceRequests
-
-| Column | Type | Notes |
-|---|---|---|
-| id | INTEGER PK | |
-| name / description | VARCHAR / TEXT | |
-| link | VARCHAR | Nullable, for online conferences |
-| type | VARCHAR | `online` / `in-person` |
-| departement | VARCHAR | |
-| date | TIMESTAMP | |
-| time | VARCHAR | HH:MM |
-| requested_by_id | FK → users.id | |
-| status | ENUM | `En attente` / `Approuvé` / `Refusé` |
-| created_at | TIMESTAMP | |
-
----
-
-## API Reference
-
-### Authentication
-
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| POST | `/register` | None | Register. Account pending until admin approves. |
-| POST | `/token` | None | OAuth2 form (email + password). Returns JWT. |
-
-### User Management
-
-| Method | Path | Auth | Description |
-|---|---|---|---|
-| GET | `/admin/pending-users` | admin | List unapproved accounts |
-| POST | `/admin/approve-user/{id}` | admin | Approve or reject `{ is_approved: bool }` |
-| DELETE | `/admin/users/{id}` | admin | Hard delete user |
-| PUT | `/admin/users/{id}` | admin | Update any user |
-| GET | `/public/users` | none | All users — used by messaging UI |
-| GET | `/personal-info` | any | Own telephone |
-| PUT | `/personal-info` | any | Update telephone |
-| GET | `/preferences` | any | Own language + theme |
-| PUT | `/preferences` | any | Update language or theme |
-| PUT | `/password` | any | Change password (requires current password) |
-
-### Courses
-
-| Method | Path | Auth | Cache | Description |
-|---|---|---|---|---|
-| GET | `/courses/` | approved | ✅ 2 min | List. Employers scoped to dept. |
-| GET | `/courses/by-department` | approved | ✅ 2 min | Current user's department only. |
-| GET | `/courses/{id}` | approved | ✅ 3 min | Single course with materials + instructor. |
-| GET | `/courses/{id}/materials/` | approved | ❌ | List materials. |
-| POST | `/courses/` | prof/admin | Invalidates list | Multipart: title, desc, dept, image, pdf, optional video. |
-| PUT | `/courses/{id}` | prof/admin | Invalidates detail + list | Update metadata only. |
-| DELETE | `/courses/{id}` | prof/admin | Invalidates detail + list | Deletes DB record + all local files. |
-| DELETE | `/courses/{id}/materials/{mid}` | prof/admin | ❌ | Delete one material. |
-
-### Enrollment & Progress
-
-| Method | Path | Description |
-|---|---|---|
-| POST | `/courses/{id}/enroll` | Enroll. Creates progress record at `En cours`. |
-| GET | `/courses/{id}/progress` | Get own progress. |
-| PUT | `/courses/{id}/progress?progress_value=75` | Update progress 0–100. |
-| PUT | `/courses/{id}/complete` | Force-complete. |
-
-### Notifications
-
-| Method | Path | Cache | Description |
-|---|---|---|---|
-| GET | `/notifications/` | ✅ 30 sec | All notifications + unread count. |
-| PUT | `/notifications/{id}/read` | Invalidates user | Mark as read. |
-
-### Messages
-
-| Method | Path | Description |
-|---|---|---|
-| POST | `/messages/` | Send. Multipart: `content`, `receiver_id`, optional file. |
-| GET | `/messages/?message_type=received` | Fetch received or sent. |
-| GET | `/messages/{id}` | Fetch single. Auto-marks as read. |
-| PUT | `/messages/{id}/read` | Explicit mark as read. |
-| DELETE | `/messages/{id}` | Delete message + file. |
-| GET | `/messages/file/{id}` | Download attachment (FileResponse). |
-
-### Conferences
-
-| Method | Path | Auth | Cache | Description |
-|---|---|---|---|---|
-| POST | `/request` | prof/admin | Invalidates calendar if admin | Create. Admin requests auto-approved. |
-| GET | `/admin/pending-conferences` | admin | ❌ real-time | All pending requests. |
-| PUT | `/admin/approve/{id}?approve=true` | admin | Invalidates calendar | Approve or deny. |
-| GET | `/prof/my-conferences` | prof | ❌ real-time | Own requests. |
-| GET | `/calendar` | any | ✅ 5 min | Approved conferences. Employers scoped to dept. |
-| GET | `/conferences/{id}` | any | ❌ | Single conference. |
-| DELETE | `/conferences/{name}` | owner | Invalidates calendar | Delete by name. |
-
-### Cache Management (Admin Only)
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/admin/cache-stats` | Live Redis metrics: memory, hit/miss ratio, clients. |
-| DELETE | `/admin/cache-clear` | Wipe entire Redis DB. Emergency use only. |
-
----
-
-## Authentication
-
-TAKWINI uses **JWT Bearer tokens** via OAuth2 password flow.
-
-```
-POST /token
-  body: username=email&password=plain   (form-encoded)
-  → verify bcrypt hash
-  → check is_approved == True
-  → return { access_token, token_type: "bearer" }
-
-Protected routes:
-  Header: Authorization: Bearer <token>
-  → decode JWT (HS256)
-  → load User from DB
-  → apply role guard
-```
-
-| Property | Value |
-|---|---|
-| Algorithm | HS256 |
-| Expiry | 30 minutes (configurable via env) |
-| Payload | `{ sub: email, exp: timestamp }` |
-| Refresh token | Not implemented — see Roadmap |
-| Blacklist | Not implemented — see Roadmap |
-
-> Logout on the client side simply discards the token. The token remains technically valid until expiry. Acceptable for internal corporate use; add a Redis-based blacklist before any public deployment.
-
----
-
-## Caching Strategy
-
-### Why Redis over in-memory
-
-In-memory dicts work for single-process dev but break under multiple Uvicorn workers — each process holds its own cache and they diverge. Redis is a shared external store; all workers read and write the same data. With 100–500 users on production, Redis is the correct choice.
-
-We use **[Upstash](https://upstash.com)** — serverless Redis accessed via a connection URL. No server to manage. Works with Render, Railway, any VPS, or local dev. Free tier covers ~10,000 requests/day.
-
-### Fallback Behavior
-
-Every function in `cache.py` is wrapped in try/except. If Upstash is unreachable at startup or during a request, the API silently falls back to direct DB queries. No crash, no stale data, no data loss.
-
-### Cache Keys & TTLs
-
-| Key | TTL | Description |
-|---|---|---|
-| `courses:list:all` | 120s | All courses (admin / prof view) |
-| `courses:list:dept:{dept}` | 120s | Dept-filtered list (employer view) |
-| `courses:detail:{id}` | 180s | Single course with materials + instructor |
-| `notifications:user:{id}` | 30s | Per-user notification list + unread count |
-| `conferences:calendar:all` | 300s | Full approved calendar |
-| `conferences:calendar:dept:{dept}` | 300s | Dept-filtered calendar |
-
-### Invalidation Map
-
-| Trigger | Invalidates |
-|---|---|
-| Course created | `courses:list:*` |
-| Course updated | `courses:detail:{id}`, `courses:list:*` |
-| Course deleted | `courses:detail:{id}`, `courses:list:*` |
-| Notification created (single) | `notifications:user:{user_id}` |
-| Notification created (bulk) | `notifications:user:{id}` for every recipient |
-| Notification marked as read | `notifications:user:{user_id}` |
-| Conference approved / denied | `conferences:calendar:*` |
-| Conference deleted | `conferences:calendar:*` |
-
-Pattern deletion uses `SCAN` — not `KEYS`. `KEYS` blocks Redis on large datasets. `SCAN` is cursor-based and non-blocking. Safe in production.
-
-### Measured Performance
-
-| Endpoint | Without Cache | With Cache | Gain |
-|---|---|---|---|
-| `GET /courses/` | 107ms | 54ms | **50%** |
-| `GET /notifications/` | 277ms | 63ms | **77%** |
-| `GET /calendar` | 169ms | 69ms | **59%** |
-
-Notifications showed the biggest gain because the endpoint runs two queries (full list + unread count). Both are eliminated on cache hit.
-
-### Monitoring
-
-```bash
-GET  /admin/cache-stats    # memory, hit/miss, connected clients
-DELETE /admin/cache-clear  # wipe all keys — use after direct DB patches
-```
-
-Sample response:
-```json
-{
-  "status": "connected",
-  "used_memory_human": "1.45M",
-  "connected_clients": 1,
-  "total_commands_processed": 842,
-  "keyspace_hits": 631,
-  "keyspace_misses": 94
-}
-```
-
-Target hit rate in production: **> 70%**  
-Formula: `keyspace_hits / (keyspace_hits + keyspace_misses)`
-
----
-
-## File Storage
-
-All uploads are stored on the local filesystem. Cloudinary was removed.
-
-### Directory Layout
-
-```
-uploads/
-├── courses/
-│   └── {course_id}/
-│       ├── images/      ← thumbnail (required on create)
-│       ├── pdfs/        ← course material (required on create)
-│       └── videos/      ← course video (optional)
-└── messages/
-    └── {message_id}/
-        └── {timestamp}_{filename}
-```
-
-### Filename Sanitization
-
-```python
-re.sub(r'[^A-Za-z0-9_.-]', '_', filename)
-```
-
-Strips all non-safe characters before saving. Prevents path traversal and encoding issues.
-
-### Serving
-
-Files are served via FastAPI `StaticFiles` mounted at `/uploads`. No per-request auth on the URL itself — security relies on the frontend not exposing raw paths to unauthorized users.
-
-> For public-facing deployments: serve through a CDN or add an authenticated proxy endpoint.
-
-### Cleanup
-
-Course deletion calls `shutil.rmtree(f"uploads/courses/{course_id}")` atomically with the DB delete. No orphaned files.
-
----
-
-## Notification System
-
-### Two Creation Paths
-
-```python
-# Single user — 1 DB commit
-create_notification(db, user_id, title, message, type, course_id)
-
-# Multiple users — 1 DB commit via bulk_save_objects
-_bulk_notify(db, user_ids, title, message, type, course_id)
-```
-
-`bulk_save_objects` matters at scale. Creating a course that notifies 200 employees = 1 DB commit, not 200.
-
-Both paths call `cache_delete(f"notifications:user:{user_id}")` after committing, ensuring the next fetch always reflects current state.
-
-### Notification Types
-
-| Type | Recipient | Trigger |
-|---|---|---|
-| `account_request` | Admin | New user registers |
-| `account_approval` | User | Admin approves / rejects account |
-| `new_course` | Admin | Any course created |
-| `department_new_course` | All profs in dept | Course created in their dept |
-| `new_course_available` | All employers in dept | Course created in their dept |
-| `course_deleted` | Admin | Course deleted |
-| `material_added` | Admin + enrolled users | Material added to a course |
-| `progress_updated` | User | Own progress updated |
-| `conference_request` | Admin | Prof submits a conference request |
-| `conference_status` | Prof | Admin approves / denies their request |
-
----
-
-## Dependency Decisions
-
-Every version is pinned deliberately. Do not upgrade without reading the reason.
-
-| Package | Version | Reason |
-|---|---|---|
-| `fastapi` | 0.115.5 | Minimum version compatible with Pydantic 2.12.x. Earlier versions crash with `AttributeError: 'FieldInfo' object has no attribute 'in_'` on Python 3.13. |
-| `starlette` | 0.41.3 | Exact peer dependency of fastapi 0.115.5. Do not change independently. |
-| `uvicorn` | 0.32.0 | Compatible with starlette 0.41.x. |
-| `sqlalchemy` | 2.0.36 | Minimum for Python 3.13. Version 2.0.23 fails with `AssertionError` on `__firstlineno__` / `__static_attributes__`. |
-| `pydantic` | 2.12.5 | Latest stable. All schemas use `model_config = ConfigDict(from_attributes=True)`. |
-| `pydantic-settings` | 2.13.1 | Matched to pydantic 2.12.x. |
-| `bcrypt` | 4.0.1 | bcrypt 5.x enforces a 72-byte password limit that raises `ValueError` inside `passlib.verify()`. |
-| `passlib[bcrypt]` | 1.7.4 | Last stable release, no longer maintained. Acceptable for internal use. |
-| `python-jose[cryptography]` | 3.3.0 | JWT with cryptography backend. |
-| `redis` | 5.0.1 | Stable client for Redis 7.x and Upstash. |
-| `email-validator` | 2.3.0 | Required by `pydantic[email]` for `EmailStr` fields. |
-| `psycopg2-binary` | 2.9.11 | PostgreSQL adapter. Binary avoids compilation. |
-
-```txt
-fastapi==0.115.5
-starlette==0.41.3
-uvicorn==0.32.0
-python-dotenv==1.0.0
-sqlalchemy==2.0.36
-pydantic==2.12.5
-pydantic-settings==2.13.1
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-bcrypt==4.0.1
-python-multipart==0.0.6
-email-validator==2.3.0
-psycopg2-binary==2.9.11
-redis==5.0.1
+## Phase 4: v1.2 (Enterprise Features)
+**Goal:** Enterprise-grade platform for 5,000+ users
+**Timeline:** 8-10 weeks
+**Cost:** $50-100/month
+
+### New Features
+
+#### Enterprise Integration
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 SSO/SAML integration | High | Azure AD, Google Workspace |
+| 🔲 LDAP integration | Medium | Corporate directory sync |
+| 🔲 API for integrations | Medium | REST API for other systems |
+| 🔲 Webhook system | Medium | Real-time events to external systems |
+
+#### Advanced Learning
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Video streaming | High | HLS streaming for course videos |
+| 🔲 AI recommendations | Medium | Suggest courses based on profile |
+| 🔲 Gamification | Medium | Points, badges, leaderboards |
+| 🔲 Discussion forums | Medium | Per-course discussions |
+| 🔲 Peer review | Low | Assignment review by peers |
+
+#### Multi-tenancy & Localization
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Multi-language support | High | Complete i18n |
+| 🔲 Subsidiary support | Medium | Multiple GIG entities |
+| 🔲 White-labeling | Low | Custom branding per tenant |
+
+#### Compliance & Security
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| 🔲 Advanced audit logs | High | Immutable, searchable logs |
+| 🔲 Data retention policies | Medium | Auto-cleanup old data |
+| 🔲 Encryption at rest | Medium | Database encryption |
+
+### v1.2 Infrastructure ($50-100/month)
+```yaml
+# Web: Auto-scaling group (3-5 instances) on Render/Fly.io
+# Database: Managed PostgreSQL with read replicas (AWS RDS, etc.)
+# Redis: Redis Cluster or ElastiCache
+# Search: MeiliSearch or Elasticsearch (separate instance)
+# File Storage: S3/R2 with lifecycle policies
+# CDN: Cloudflare Pro or AWS CloudFront
+# Monitoring: Datadog or Grafana Cloud
+# Total: ~$50-100/month
 ```
 
 ---
 
-## Deployment
-
-### Pre-Deploy Checklist
-
-- [ ] Generate a new `SECRET_KEY` — never use the dev value in production
-- [ ] Change `DEFAULT_ADMIN_PASSWORD` to something strong
-- [ ] Update CORS origin in `main.py` from `localhost:3000` to your real frontend URL
-- [ ] Set `REDIS_URL` to your Upstash production database URL
-- [ ] Set `DATABASE_URL` to your production PostgreSQL connection string
-- [ ] Ensure `uploads/` is writable — mount a persistent volume if on Render/Railway
-- [ ] Review `ACCESS_TOKEN_EXPIRE_MINUTES` — 30 min is reasonable
-
-### Render / Railway
+## Timeline Summary
 
 ```
-Build command : pip install -r requirements.txt
-Start command : uvicorn main:app --host 0.0.0.0 --port $PORT
+Week 1-3:   MVP         ████████████████████
+Week 4-9:   v1.0        ████████████████████████████████████████
+Week 10-17: v1.1        ████████████████████████████████████████████████████████
+Week 18-27: v1.2        ████████████████████████████████████████████████████████████████████████████
+            │           │
+            └─── Done   └─── In Progress   └─── Planned
 ```
-
-Set all `.env` values in the platform's environment variables panel.  
-`REDIS_URL` comes from your Upstash dashboard and works with any platform.
-
-### Multiple Workers
-
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-Works correctly because the cache is Redis (shared), not in-memory.  
-With multiple workers and local file uploads, all workers must share the same filesystem. On Render, mount a persistent disk at the `uploads/` path.
 
 ---
 
-## Known Issues & Roadmap
+## Cost Progression
 
-### Active Bugs
+| Phase | Timeline | Monthly Cost | Users Supported |
+|-------|----------|--------------|-----------------|
+| Current | Now | $0 | Development only |
+| MVP | Week 3 | $0 | 100-500 |
+| v1.0 | Week 9 | $0-10 | 500-2,000 |
+| v1.1 | Week 17 | $20-50 | 2,000-5,000 |
+| v1.2 | Week 27 | $50-100 | 5,000+ |
 
-| Issue | File | Impact |
-|---|---|---|
-| Employer dashboard missing dept filter | `routers/enrollment.py` | Employers may see cross-dept data |
+---
 
-### Security Gaps
+## Implementation Priority Matrix
 
-Acceptable for internal corporate use. Fix before any public-facing launch.
+### Immediate (This Week)
+1. ✅ Rate limiting - **DONE**
+2. ✅ Secure secrets - **DONE**
+3. ⏳ Health check endpoint
+4. ⏳ Token refresh mechanism
 
-| Issue | Risk | Recommended Fix |
-|---|---|---|
-| No token refresh | Users re-login every 30 min | Refresh token endpoint + httpOnly cookie |
-| No token blacklist | Logout doesn't invalidate server-side | Redis-based blacklist keyed on `jti` |
-| Static files unprotected | Direct `/uploads/` URLs work without auth | Authenticated proxy endpoint |
+### Short-term (Next 2 Weeks)
+1. Alembic database migrations
+2. Soft delete implementation
+3. Password strength validation
+4. Request logging middleware
+5. Sentry error monitoring
 
-### Planned Features
+### Medium-term (Next Month)
+1. Background tasks (Celery)
+2. Move file storage to R2
+3. Search functionality
+4. Email notifications
+5. Audit logging
 
-| Feature | Priority | Notes |
-|---|---|---|
-| `GET /users/me` with stats | Medium | Enrolled courses, completion rate, last active |
-| Real-time notifications | Medium | Replace DB polling with SSE (Server-Sent Events) |
-| Message caching | Low | Same pattern as notifications — per-user Redis key |
-| Token refresh endpoint | High | Needed before production launch |
-| Rate limiting on `/token` | High | Use `slowapi` to block brute force |
-| Soft delete | Low | `deleted_at` column instead of hard deletes |
+### Long-term (Next Quarter)
+1. Real-time features (WebSockets)
+2. Analytics dashboard
+3. Quiz/assessment system
+4. Certificate generation
+5. SSO integration
+
+---
+
+## Technical Debt to Address
+
+| Item | Priority | When |
+|------|----------|------|
+| Add database indexes | High | v1.0 |
+| Optimize N+1 queries | High | v1.0 |
+| Add API tests | Medium | MVP |
+| Add load tests | Medium | v1.0 |
+| Frontend migration to React/Vue | Low | v1.2 |
+
+---
+
+## Success Metrics by Phase
+
+### MVP Success
+- Zero security incidents
+- <1% error rate
+- <500ms average response time
+- Can handle 100 concurrent users
+
+### v1.0 Success
+- 99.5% uptime
+- <200ms cached response time
+- 500 active users
+- 95% user satisfaction
+
+### v1.1 Success
+- 99.9% uptime
+- 2,000 active users
+- 80% course completion rate
+- 10 courses added per month
+
+### v1.2 Success
+- 99.95% uptime
+- 5,000+ active users
+- SSO integration with corporate systems
+- Self-service course creation by instructors
+
+---
+
+## Risk Mitigation
+
+| Risk | Likelihood | Mitigation |
+|------|------------|------------|
+| Database size exceeds free tier | High | Implement data retention, compress files |
+| Redis limits exceeded | Medium | Cache only high-value data, shorter TTLs |
+| Render free tier sleeps | High | Use Fly.io (no sleep) or accept cold starts |
+| File storage fills up | Medium | Move to R2, implement cleanup jobs |
+| Security vulnerability | Low | Regular dependency updates, audit logs |
+
+---
+
+## Next Steps
+
+1. **Today:** Implement token refresh mechanism
+2. **This Week:** Add health check endpoint
+3. **Next Week:** Set up Alembic migrations
+4. **Week 3:** Launch MVP to internal users
+5. **Week 4:** Gather feedback, plan v1.0
+
+---
+
+*Last Updated: April 2025*
+*Next Review: After MVP Launch*
