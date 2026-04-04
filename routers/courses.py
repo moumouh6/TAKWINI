@@ -63,9 +63,23 @@ def get_courses_by_department(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    return db.query(Course).filter(
+    cache_key = f"courses:list:dept:{current_user.departement}"
+
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    courses = db.query(Course).filter(
         Course.departement == current_user.departement
     ).options(joinedload(Course.materials)).all()
+
+    from schemas import Course as CourseSchema
+    result = [
+        CourseSchema.model_validate(c, from_attributes=True).model_dump(mode="json")
+        for c in courses
+    ]
+    cache_set(cache_key, result, TTL_COURSES_LIST)
+    return courses
 
 # ─── Get Single Course ────────────────────────────────────────
 @router.get("/courses/{course_id}")
