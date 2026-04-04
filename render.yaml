@@ -3,29 +3,27 @@ services:
     name: platform-api
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 2
     envVars:
-      - key: POSTGRES_USER
-        value: mohamed
-      - key: POSTGRES_PASSWORD
-        value: ZL25htXHKtznO88KHZ7DVKoLUZ81Ywos
-      - key: POSTGRES_HOST
-        value: dpg-d06mrn2li9vc73ehpe80-a.frankfurt-postgres.render.com
-      - key: POSTGRES_PORT
-        value: 5432
-      - key: POSTGRES_DB
-        value: platform_bjve
-      - key: DEFAULT_ADMIN_EMAIL
-        value: admin@gig.dz
-      - key: DEFAULT_ADMIN_PASSWORD
-        value: admin123
+      - key: DATABASE_URL
+        sync: false  # Set in Render dashboard
       - key: SECRET_KEY
-        value: 8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92
+        sync: false  # Set in Render dashboard
+      - key: DEFAULT_ADMIN_EMAIL
+        sync: false  # Set in Render dashboard
+      - key: DEFAULT_ADMIN_PASSWORD
+        sync: false  # Set in Render dashboard
+      - key: REDIS_URL
+        sync: false  # Set in Render dashboard
+      - key: CORS_ORIGINS
+        sync: false  # Set in Render dashboard
       - key: ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: 30
+        value: "30"
+      - key: UPLOAD_DIR
+        value: uploads
     disk:
-      name: data
-      mountPath: /tmp/data
-      sizeGB: 1 
+      name: uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
