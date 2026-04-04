@@ -86,7 +86,7 @@ Backend-main/
 ├── services/
 │   ├── notification_service.py  # All notification logic + cache invalidation
 │   ├── message_service.py       # Message CRUD
-│   └── course_service.py        # (exists, mostly unused)
+│   └── course_service.py        
 │
 ├── uploads/                 # All local file storage
 │   ├── courses/
@@ -97,7 +97,7 @@ Backend-main/
 │   └── messages/
 │       └── {message_id}/
 │
-├── .env                     # Secrets — never commit to git
+├── .env                     
 ├── requirements.txt
 └── venv/
 ```
