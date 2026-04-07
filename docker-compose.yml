@@ -1,0 +1,55 @@
+# TAKWINI Backend - Docker Compose (Minimal)
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: takwini-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: takwini
+      POSTGRES_PASSWORD: takwini123
+      POSTGRES_DB: takwini
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U takwini"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # FastAPI Application
+  api:
+    build: .
+    container_name: takwini-api
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://takwini:takwini123@db:5432/takwini
+      # JWT (generate a new one for production!)
+      SECRET_KEY: demo-secret-key-change-in-production
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 30
+      # Admin
+      DEFAULT_ADMIN_EMAIL: admin@gig.dz
+      DEFAULT_ADMIN_PASSWORD: admin123
+      # Storage
+      UPLOAD_DIR: uploads
+      # Redis (optional - leave empty to disable)
+      REDIS_URL: ""
+      # CORS
+      CORS_ORIGINS: "*"
+    volumes:
+      - uploads_data:/app/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  uploads_data:

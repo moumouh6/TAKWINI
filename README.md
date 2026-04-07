@@ -67,41 +67,43 @@
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.13+
-- PostgreSQL 14+
-- An [Upstash](https://upstash.com) Redis database (free tier is sufficient)
-
-### Setup
+### Option 1: Docker (Easiest - Recommended for Demo)
 
 ```bash
-# Clone and enter project
-git clone <repo-url>
-cd Backend-main
+# 1. Copy the Docker environment file
+cp .env.docker .env
 
-# Create virtual environment
+# 2. Start everything (PostgreSQL + API)
+docker-compose up -d
+
+# 3. That's it! Access the API at:
+#    http://localhost:8000/docs
+```
+
+### Option 2: Local Development
+
+**Prerequisites:** Python 3.13+, PostgreSQL 14+
+
+```bash
+# 1. Create virtual environment
 python -m venv venv
+venv\Scripts\activate  # Windows
+# source venv/bin/activate  # Mac/Linux
 
-# Activate
-venv\Scripts\activate      # Windows
-source venv/bin/activate   # macOS / Linux
-
-# Install dependencies
+# 2. Install dependencies
 pip install -r requirements.txt
 
-# Configure environment
+# 3. Configure environment
 cp .env.example .env
-# → Edit .env with your values (see Environment Variables)
+# Edit .env with your database credentials
 
-# Create PostgreSQL database
+# 4. Create database
 createdb takwini
 
-# Run
+# 5. Run
 uvicorn main:app --reload
 
-# API docs
-http://localhost:8000/docs
+# API docs: http://localhost:8000/docs
 ```
 
 ---
@@ -558,6 +560,35 @@ Both paths call `cache_delete(f"notifications:user:{user_id}")` after committing
 | `progress_updated` | User | Own progress updated |
 | `conference_request` | Admin | Prof submits a conference request |
 | `conference_status` | Prof | Admin approves / denies their request |
+
+---
+
+## Docker Deployment
+
+For testing and demo purposes, use Docker Compose:
+
+```bash
+# 1. Start PostgreSQL + API
+docker-compose up -d
+
+# 2. Check logs
+docker-compose logs -f
+
+# 3. Stop
+docker-compose down
+
+# 4. Stop and remove data (fresh start)
+docker-compose down -v
+```
+
+**Services:**
+- API: http://localhost:8000/docs
+- PostgreSQL: localhost:5432 (user: `takwini`, pass: `takwini123`)
+
+**Files:**
+- `Dockerfile` — Container definition
+- `docker-compose.yml` — Services configuration
+- `.env.docker` — Environment template (already configured for Docker)
 
 ---
 
